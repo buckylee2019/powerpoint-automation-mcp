@@ -2,6 +2,10 @@
 
 This project demonstrates how to use MCP (Model Completion Protocol) to create a server that provides PowerPoint automation capabilities.
 
+## Demo
+
+https://github.com/buckylee2019/powerpoint-automation-mcp/assets/YOUR_ASSET_ID/mcp_demo.mp4
+
 ## Features
 
 - Create, open, and save PowerPoint presentations
