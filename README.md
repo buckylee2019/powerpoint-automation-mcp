@@ -4,7 +4,9 @@ This project demonstrates how to use MCP (Model Completion Protocol) to create a
 
 ## Demo
 
-https://github.com/buckylee2019/powerpoint-automation-mcp/assets/video/mcp_demo.mp4
+https://user-images.githubusercontent.com/YOUR_USER_ID/mcp_demo.mp4
+
+![Demo Video](./mcp_demo.mp4)
 
 ## Features
 
