@@ -4,9 +4,7 @@ This project demonstrates how to use MCP (Model Completion Protocol) to create a
 
 ## Demo
 
-https://user-images.githubusercontent.com/YOUR_USER_ID/mcp_demo.mp4
-
-![Demo Video](./mcp_demo.mp4)
+https://github.com/user-attachments/assets/3daf3bef-4d75-4639-a891-0e64b80b4807
 
 ## Features
 
