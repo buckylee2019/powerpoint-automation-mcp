@@ -1,5 +1,5 @@
 [project]
-name = "mcp-server-demo"
+name = "mcp-ppt-server"
 version = "0.1.0"
 description = "PowerPoint automation with MCP server"
 readme = "README.md"
@@ -8,3 +8,14 @@ dependencies = [
     "mcp[cli]>=1.6.0",
     "python-pptx>=0.6.21",
 ]
+
+[project.scripts]
+mcp-ppt-server = "mcp_ppt_server.server:main"
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["mcp_ppt_server"]

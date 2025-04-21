@@ -831,5 +831,10 @@ def add_chart(presentation_id: str, slide_index: int, chart_type: str,
     except Exception as e:
         return {"error": f"Error adding chart: {str(e)}"}
 
-if __name__ == "__main__":
+def main():
+
     mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

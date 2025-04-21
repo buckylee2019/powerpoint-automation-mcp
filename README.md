@@ -13,38 +13,13 @@ https://github.com/user-attachments/assets/3daf3bef-4d75-4639-a891-0e64b80b4807
 - Add text boxes, images, tables, and charts
 - Update text content and shape properties
 
-## Setup
-
-1. Create a virtual environment:
-   ```
-   python -m venv .venv
-   ```
-
-2. Activate the virtual environment:
-   - On Windows: `.venv\Scripts\activate`
-   - On macOS/Linux: `source .venv/bin/activate`
-
-3. Install dependencies:
-   ```
-   pip install -e .
-   ```
-   
-   Or if using uv:
-   ```
-   uv pip install -e .
-   ```
-
-4. Install python-pptx:
-   ```
-   pip install python-pptx
-   ```
 
 ## Running the Server
 
 To run the server:
 
 ```
-uv run server
+uv run --directory  /path/to/mcp-ppt-server mcp-ppt-server 
 ```
 
 
@@ -52,16 +27,33 @@ uv run server
 
 The server exposes various tools for PowerPoint automation that can be called via MCP. These include:
 
+### Presentation Management
 - `initialize_powerpoint()`: Initialize PowerPoint automation
 - `create_presentation()`: Create a new presentation
-- `open_presentation(file_path)`: Open an existing presentation
-- `add_slide(presentation_id, layout_index)`: Add a new slide
-- `add_textbox(presentation_id, slide_index, text, ...)`: Add a text box
-- `add_image(presentation_id, slide_index, image_path, ...)`: Add an image
-- `add_table(presentation_id, slide_index, rows, cols, ...)`: Add a table
-- `add_chart(presentation_id, slide_index, chart_type, ...)`: Add a chart
-- `save_presentation(presentation_id, path)`: Save a presentation
+- `open_presentation(file_path)`: Open an existing presentation from the specified path
+- `get_presentations()`: Get a list of all tracked PowerPoint presentations with their metadata
+- `save_presentation(presentation_id, path=None)`: Save a presentation to disk (path is optional if presentation was previously saved)
 - `close_presentation(presentation_id)`: Close a presentation
+
+### Slide Management
+- `get_slides(presentation_id)`: Get a list of all slides in a presentation
+- `add_slide(presentation_id, layout_index=1)`: Add a new slide with specified layout (default is Title and Content)
+  - Layout options: 0=Title slide, 1=Title and content, 2=Section header, 3=Two content, etc.
+- `set_slide_title(presentation_id, slide_index, title)`: Set the title text of a slide
+
+### Content Management
+- `get_slide_text(presentation_id, slide_index)`: Get all text content in a slide
+- `get_slide_shapes(presentation_id, slide_index)`: Get all shapes in a slide with their IDs and properties
+- `update_text(presentation_id, slide_index, shape_index, text)`: Update the text content of a shape
+- `update_shape_by_id(presentation_id, slide_index, shape_id, text=None, left=None, top=None, width=None, height=None)`: Update a shape by its ID with new properties
+
+### Adding Content
+- `add_textbox(presentation_id, slide_index, text, left=1, top=1, width=4, height=2)`: Add a text box to a slide
+- `add_image(presentation_id, slide_index, image_path, left=1, top=1, width=None, height=None)`: Add an image to a slide
+- `add_table(presentation_id, slide_index, rows, cols, left=1, top=1, width=8, height=4)`: Add a table to a slide
+- `update_table_cell(presentation_id, slide_index, shape_index, row, col, text)`: Update the text in a table cell
+- `add_chart(presentation_id, slide_index, chart_type, categories, series_names, series_values, left=1, top=1, width=8, height=4, has_legend=True)`: Add a chart to a slide
+  - Chart types: 'COLUMN', 'LINE', 'PIE', 'BAR'
 
 ## MCP Config
 
@@ -72,7 +64,9 @@ The server exposes various tools for PowerPoint automation that can be called vi
          "command": "uv",
          "args": [
          "run",
-         "/path/to/mcp-ppt-server/server",
+         "--directory",
+         "/path/to/mcp-ppt-server",
+         "mcp-ppt-server"
          ]
    }
   }
