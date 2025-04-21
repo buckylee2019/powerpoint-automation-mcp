@@ -14,23 +14,23 @@ USER_AGENT = "ppts-app/1.0"
 
 class PPTAutomation:
     def __init__(self):
-        self.presentations = {}  # Store presentation IDs and their objects
+        self.active_presentation = None
+        self.presentation_path = None
         
     def initialize(self):
         """Initialize the PowerPoint automation - no app instance needed with python-pptx"""
         return True
                 
-    def get_open_presentations(self):
-        """Get all currently tracked presentations"""
-        result = []
-        for pres_id, pres_info in self.presentations.items():
-            result.append({
-                "id": pres_id,
-                "name": os.path.basename(pres_info["path"]) if pres_info["path"] else "Untitled",
-                "path": pres_info["path"],
-                "slide_count": len(pres_info["presentation"].slides)
-            })
-        return result
+    def get_active_presentation(self):
+        """Get information about the currently active presentation"""
+        if self.active_presentation is None:
+            return None
+        
+        return {
+            "name": os.path.basename(self.presentation_path) if self.presentation_path else "Untitled",
+            "path": self.presentation_path,
+            "slide_count": len(self.active_presentation.slides)
+        }
 
 # Create a global instance of our automation class
 ppt_automation = PPTAutomation()
@@ -41,9 +41,12 @@ def initialize_powerpoint() -> bool:
     return ppt_automation.initialize()
 
 @mcp.tool()
-def get_presentations() -> List[Dict[str, Any]]:
-    """Get a list of all tracked PowerPoint presentations with their metadata."""
-    return ppt_automation.get_open_presentations()
+def get_presentation() -> Dict[str, Any]:
+    """Get information about the currently active presentation."""
+    presentation_info = ppt_automation.get_active_presentation()
+    if presentation_info is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
+    return presentation_info
 
 @mcp.tool()
 def open_presentation(file_path: str) -> Dict[str, Any]:
@@ -54,44 +57,35 @@ def open_presentation(file_path: str) -> Dict[str, Any]:
         file_path: Full path to the PowerPoint file (.pptx)
         
     Returns:
-        Dictionary with presentation ID and metadata
+        Dictionary with presentation metadata
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
     
     try:
-        pres = Presentation(file_path)
-        pres_id = str(uuid.uuid4())
-        
-        ppt_automation.presentations[pres_id] = {
-            "presentation": pres,
-            "path": file_path
-        }
+        ppt_automation.active_presentation = Presentation(file_path)
+        ppt_automation.presentation_path = file_path
         
         return {
-            "id": pres_id,
             "name": os.path.basename(file_path),
             "path": file_path,
-            "slide_count": len(pres.slides)
+            "slide_count": len(ppt_automation.active_presentation.slides)
         }
     except Exception as e:
         return {"error": str(e)}
 
 @mcp.tool()
-def get_slides(presentation_id: str) -> List[Dict[str, Any]]:
+def get_slides() -> List[Dict[str, Any]]:
     """
-    Get a list of all slides in a presentation.
+    Get a list of all slides in the active presentation.
     
-    Args:
-        presentation_id: ID of the presentation
-        
     Returns:
         List of slide metadata
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     slides = []
     
     try:
@@ -118,22 +112,21 @@ def get_slides(presentation_id: str) -> List[Dict[str, Any]]:
         return {"error": f"Error getting slides: {str(e)}"}
 
 @mcp.tool()
-def get_slide_text(presentation_id: str, slide_index: int) -> Dict[str, Any]:
+def get_slide_text(slide_index: int) -> Dict[str, Any]:
     """
     Get all text content in a slide.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (integer, 0-based)
         
     Returns:
         Dictionary containing text content organized by shape
     """
     try:
-        if presentation_id not in ppt_automation.presentations:
-            return {"error": f"Presentation ID not found: {presentation_id}"}
+        if ppt_automation.active_presentation is None:
+            return {"error": "No active presentation. Please open or create a presentation first."}
         
-        pres = ppt_automation.presentations[presentation_id]["presentation"]
+        pres = ppt_automation.active_presentation
         
         if slide_index < 0 or slide_index >= len(pres.slides):
             return {"error": f"Invalid slide index: {slide_index}. Valid range is 0-{len(pres.slides)-1}"}
@@ -162,27 +155,25 @@ def get_slide_text(presentation_id: str, slide_index: int) -> Dict[str, Any]:
     except Exception as e:
         return {
             "error": f"An error occurred: {str(e)}",
-            "presentation_id": presentation_id,
             "slide_index": slide_index
         }
 
 @mcp.tool()
-def get_slide_shapes(presentation_id: str, slide_index: int) -> Dict[str, Any]:
+def get_slide_shapes(slide_index: int) -> Dict[str, Any]:
     """
     Get all shapes in a slide with their IDs and properties.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (integer, 0-based)
         
     Returns:
         Dictionary containing all shapes with their properties
     """
     try:
-        if presentation_id not in ppt_automation.presentations:
-            return {"error": f"Presentation ID not found: {presentation_id}"}
+        if ppt_automation.active_presentation is None:
+            return {"error": "No active presentation. Please open or create a presentation first."}
         
-        pres = ppt_automation.presentations[presentation_id]["presentation"]
+        pres = ppt_automation.active_presentation
         
         if slide_index < 0 or slide_index >= len(pres.slides):
             return {"error": f"Invalid slide index: {slide_index}. Valid range is 0-{len(pres.slides)-1}"}
@@ -235,17 +226,15 @@ def get_slide_shapes(presentation_id: str, slide_index: int) -> Dict[str, Any]:
     except Exception as e:
         return {
             "error": f"An error occurred: {str(e)}",
-            "presentation_id": presentation_id,
             "slide_index": slide_index
         }
 
 @mcp.tool()
-def update_text(presentation_id: str, slide_index: int, shape_index: int, text: str) -> Dict[str, Any]:
+def update_text(slide_index: int, shape_index: int, text: str) -> Dict[str, Any]:
     """
     Update the text content of a shape.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         shape_index: Index of the shape (0-based)
         text: New text content
@@ -253,10 +242,10 @@ def update_text(presentation_id: str, slide_index: int, shape_index: int, text: 
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -278,14 +267,13 @@ def update_text(presentation_id: str, slide_index: int, shape_index: int, text: 
         return {"success": False, "error": f"Error updating text: {str(e)}"}
 
 @mcp.tool()
-def update_shape_by_id(presentation_id: str, slide_index: int, shape_id: str, 
+def update_shape_by_id(slide_index: int, shape_id: str, 
                        text: str = None, left: float = None, top: float = None, 
                        width: float = None, height: float = None) -> Dict[str, Any]:
     """
     Update a shape by its ID with new properties.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         shape_id: ID of the shape (string)
         text: New text content (if applicable)
@@ -297,10 +285,10 @@ def update_shape_by_id(presentation_id: str, slide_index: int, shape_id: str,
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -354,34 +342,30 @@ def update_shape_by_id(presentation_id: str, slide_index: int, shape_id: str,
         return {"success": False, "error": f"Error updating shape: {str(e)}"}
 
 @mcp.tool()
-def save_presentation(presentation_id: str, path: str = None) -> Dict[str, Any]:
+def save_presentation(path: str = None) -> Dict[str, Any]:
     """
-    Save a presentation to disk.
+    Save the active presentation to disk.
     
     Args:
-        presentation_id: ID of the presentation
         path: Optional path to save the file (if None, save to current location)
         
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
-    
-    pres_info = ppt_automation.presentations[presentation_id]
-    pres = pres_info["presentation"]
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
     try:
-        save_path = path if path else pres_info["path"]
+        save_path = path if path else ppt_automation.presentation_path
         
         # If this is a new presentation without a path, we need a path
         if not save_path:
             return {"error": "Save path must be specified for new presentations"}
         
-        pres.save(save_path)
+        ppt_automation.active_presentation.save(save_path)
         
         # Update the path in our records
-        pres_info["path"] = save_path
+        ppt_automation.presentation_path = save_path
         
         return {
             "success": True, 
@@ -391,22 +375,20 @@ def save_presentation(presentation_id: str, path: str = None) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 @mcp.tool()
-def close_presentation(presentation_id: str) -> Dict[str, Any]:
+def close_presentation() -> Dict[str, Any]:
     """
-    Close a presentation.
+    Close the active presentation.
     
-    Args:
-        presentation_id: ID of the presentation
-        
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
     try:
         # With python-pptx, we just remove it from our tracking
-        del ppt_automation.presentations[presentation_id]
+        ppt_automation.active_presentation = None
+        ppt_automation.presentation_path = None
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -417,33 +399,26 @@ def create_presentation() -> Dict[str, Any]:
     Create a new PowerPoint presentation.
     
     Returns:
-        Dictionary containing new presentation ID and metadata
+        Dictionary containing new presentation metadata
     """
     try:
-        pres = Presentation()
-        pres_id = str(uuid.uuid4())
-        
-        ppt_automation.presentations[pres_id] = {
-            "presentation": pres,
-            "path": ""
-        }
+        ppt_automation.active_presentation = Presentation()
+        ppt_automation.presentation_path = ""
         
         return {
-            "id": pres_id,
             "name": "New Presentation",
             "path": "",
-            "slide_count": len(pres.slides)
+            "slide_count": len(ppt_automation.active_presentation.slides)
         }
     except Exception as e:
         return {"error": str(e)}
 
 @mcp.tool()
-def add_slide(presentation_id: str, layout_index: int = 1) -> Dict[str, Any]:
+def add_slide(layout_index: int = 1) -> Dict[str, Any]:
     """
     Add a new slide to the presentation.
     
     Args:
-        presentation_id: ID of the presentation
         layout_index: Slide layout index (default is 1)
             0: Title slide
             1: Title and content
@@ -454,10 +429,10 @@ def add_slide(presentation_id: str, layout_index: int = 1) -> Dict[str, Any]:
     Returns:
         Information about the new slide
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         # Get slide layouts
@@ -480,14 +455,13 @@ def add_slide(presentation_id: str, layout_index: int = 1) -> Dict[str, Any]:
         return {"error": f"Error adding slide: {str(e)}"}
 
 @mcp.tool()
-def add_textbox(presentation_id: str, slide_index: int, text: str, 
+def add_textbox(slide_index: int, text: str, 
                 left: float = 1, top: float = 1, 
                 width: float = 4, height: float = 2) -> Dict[str, Any]:
     """
     Add a text box to a slide and set its text content.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         text: Text content
         left: Left edge position of the text box (inches)
@@ -498,10 +472,10 @@ def add_textbox(presentation_id: str, slide_index: int, text: str,
     Returns:
         Operation status and ID of the new shape
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -535,22 +509,21 @@ def add_textbox(presentation_id: str, slide_index: int, text: str,
         return {"error": f"Error adding text box: {str(e)}"}
 
 @mcp.tool()
-def set_slide_title(presentation_id: str, slide_index: int, title: str) -> Dict[str, Any]:
+def set_slide_title(slide_index: int, title: str) -> Dict[str, Any]:
     """
     Set the title text of a slide.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         title: New title text
         
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -590,13 +563,12 @@ def set_slide_title(presentation_id: str, slide_index: int, title: str) -> Dict[
         return {"error": f"Error setting slide title: {str(e)}"}
 
 @mcp.tool()
-def add_image(presentation_id: str, slide_index: int, image_path: str,
+def add_image(slide_index: int, image_path: str,
               left: float = 1, top: float = 1, width: float = None, height: float = None) -> Dict[str, Any]:
     """
     Add an image to a slide.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         image_path: Path to the image file
         left: Left position in inches
@@ -607,13 +579,13 @@ def add_image(presentation_id: str, slide_index: int, image_path: str,
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
     if not os.path.exists(image_path):
         return {"error": f"Image file not found: {image_path}"}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -652,13 +624,12 @@ def add_image(presentation_id: str, slide_index: int, image_path: str,
         return {"error": f"Error adding image: {str(e)}"}
 
 @mcp.tool()
-def add_table(presentation_id: str, slide_index: int, rows: int, cols: int,
+def add_table(slide_index: int, rows: int, cols: int,
               left: float = 1, top: float = 1, width: float = 8, height: float = 4) -> Dict[str, Any]:
     """
     Add a table to a slide.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         rows: Number of rows
         cols: Number of columns
@@ -670,10 +641,10 @@ def add_table(presentation_id: str, slide_index: int, rows: int, cols: int,
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -703,13 +674,12 @@ def add_table(presentation_id: str, slide_index: int, rows: int, cols: int,
         return {"error": f"Error adding table: {str(e)}"}
 
 @mcp.tool()
-def update_table_cell(presentation_id: str, slide_index: int, shape_index: int, 
+def update_table_cell(slide_index: int, shape_index: int, 
                       row: int, col: int, text: str) -> Dict[str, Any]:
     """
     Update the text in a table cell.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         shape_index: Index of the table shape (0-based)
         row: Row index (0-based)
@@ -719,10 +689,58 @@ def update_table_cell(presentation_id: str, slide_index: int, shape_index: int,
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
+    print(f"Active presentation: {ppt_automation.active_presentation}")
+    try:
+        if slide_index < 0 or slide_index >= len(pres.slides):
+            return {"error": f"Invalid slide index: {slide_index}"}
+        
+        slide = pres.slides[slide_index]
+        
+        if shape_index < 0 or shape_index >= len(slide.shapes):
+            return {"error": f"Invalid shape index: {shape_index}"}
+        
+        shape = slide.shapes[shape_index]
+        
+        if not hasattr(shape, "table"):
+            return {"error": "Shape is not a table"}
+        
+        table = shape.table
+        if row < 0 or row >= len(table.rows):
+            return {"error": f"Invalid row index: {row}"}
+        
+        if col < 0 or col >= len(table.columns):
+            return {"error": f"Invalid column index: {col}"}
+        
+        cell = table.cell(row, col)
+        cell.text = text
+        print(f"Updated cell ({row}, {col}) with text: {text}")
+        return {
+            "success": True,
+            "message": "Table cell updated successfully"
+        }
+    except Exception as e:
+        return {"error": f"Error updating table cell: {str(e)}"}
+
+@mcp.tool()
+def get_table_content(slide_index: int, shape_index: int) -> Dict[str, Any]:
+    """
+    Retrieve the content of a table in a slide.
+    
+    Args:
+        slide_index: Index of the slide (0-based)
+        shape_index: Index of the table shape (0-based)
+        
+    Returns:
+        Dictionary containing table data with rows and columns
+    """
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
+    
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -739,25 +757,29 @@ def update_table_cell(presentation_id: str, slide_index: int, shape_index: int,
             return {"error": "Shape is not a table"}
         
         table = shape.table
+        rows_count = len(table.rows)
+        cols_count = len(table.columns)
         
-        if row < 0 or row >= len(table.rows):
-            return {"error": f"Invalid row index: {row}"}
-        
-        if col < 0 or col >= len(table.columns):
-            return {"error": f"Invalid column index: {col}"}
-        
-        cell = table.cell(row, col)
-        cell.text = text
+        # Extract table data
+        table_data = []
+        for row_idx in range(rows_count):
+            row_data = []
+            for col_idx in range(cols_count):
+                cell = table.cell(row_idx, col_idx)
+                row_data.append(cell.text)
+            table_data.append(row_data)
         
         return {
             "success": True,
-            "message": "Table cell updated successfully"
+            "rows": rows_count,
+            "columns": cols_count,
+            "data": table_data
         }
     except Exception as e:
-        return {"error": f"Error updating table cell: {str(e)}"}
+        return {"error": f"Error retrieving table content: {str(e)}"}
 
 @mcp.tool()
-def add_chart(presentation_id: str, slide_index: int, chart_type: str,
+def add_chart(slide_index: int, chart_type: str,
               categories: List[str], series_names: List[str], series_values: List[List[float]],
               left: float = 1, top: float = 1, width: float = 8, height: float = 4,
               has_legend: bool = True) -> Dict[str, Any]:
@@ -765,7 +787,6 @@ def add_chart(presentation_id: str, slide_index: int, chart_type: str,
     Add a chart to a slide.
     
     Args:
-        presentation_id: ID of the presentation
         slide_index: Index of the slide (0-based)
         chart_type: Type of chart ('COLUMN', 'LINE', 'PIE', 'BAR')
         categories: List of category names
@@ -780,10 +801,10 @@ def add_chart(presentation_id: str, slide_index: int, chart_type: str,
     Returns:
         Status of the operation
     """
-    if presentation_id not in ppt_automation.presentations:
-        return {"error": "Presentation ID not found"}
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
     
-    pres = ppt_automation.presentations[presentation_id]["presentation"]
+    pres = ppt_automation.active_presentation
     
     try:
         if slide_index < 0 or slide_index >= len(pres.slides):
@@ -832,9 +853,7 @@ def add_chart(presentation_id: str, slide_index: int, chart_type: str,
         return {"error": f"Error adding chart: {str(e)}"}
 
 def main():
-
     mcp.run(transport="stdio")
-
 
 if __name__ == "__main__":
     main()
