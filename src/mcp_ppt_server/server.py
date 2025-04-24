@@ -828,17 +828,33 @@ def add_chart(slide_index: int, chart_type: str,
         
         chart_type_enum = chart_type_map.get(chart_type.upper(), 1)  # Default to column chart
         
-        # Add chart
-        chart_data = pres.charts.add_chart(chart_type_enum, left_inches, top_inches, 
-                                          width_inches, height_inches).chart_data
+        # Create chart data
+        from pptx.chart.data import CategoryChartData
+        chart_data = CategoryChartData()
         
         # Add categories
         chart_data.categories = categories
         
         # Add series
         for i, (name, values) in enumerate(zip(series_names, series_values)):
-            series = chart_data.add_series(name)
-            series.values = values
+            chart_data.add_series(name, values)
+            
+        # Add chart to slide
+        chart = slide.shapes.add_chart(
+            chart_type_enum, left_inches, top_inches, width_inches, height_inches, chart_data
+        )
+
+        # Add categories
+        chart_data.categories = categories
+        
+        # Add series
+        for i, (name, values) in enumerate(zip(series_names, series_values)):
+            chart_data.add_series(name, values)
+            
+        # Add chart to slide
+        chart = slide.shapes.add_chart(
+            chart_type_enum, left_inches, top_inches, width_inches, height_inches, chart_data
+        )
         
         # Get the new shape's index
         shape_index = len(slide.shapes) - 1
