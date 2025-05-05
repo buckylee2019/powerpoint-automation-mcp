@@ -1,6 +1,6 @@
 # MCP Server Demo - PowerPoint Automation
 
-This project demonstrates how to use MCP (Model Completion Protocol) to create a server that provides PowerPoint automation capabilities.
+This project demonstrates how to use MCP (Model Completion Protocol) to create a server that provides PowerPoint automation capabilities for Amazon Q.
 
 ## Demo
 
@@ -28,7 +28,7 @@ The server exposes various tools for PowerPoint automation that can be called vi
 
 ### Presentation Management
 - `initialize_powerpoint()`: Initialize PowerPoint automation
-- `create_presentation()`: Create a new presentation
+- `create_presentation(template=None)`: Create a new presentation, optionally using a template file
 - `open_presentation(file_path)`: Open an existing presentation from the specified path
 - `get_presentation()`: Get information about the currently active presentation
 - `save_presentation(path=None)`: Save the active presentation to disk (path is optional if presentation was previously saved)
@@ -52,8 +52,11 @@ The server exposes various tools for PowerPoint automation that can be called vi
 - `add_image(slide_index, image_path, left=1, top=1, width=None, height=None)`: Add an image to a slide
 - `add_table(slide_index, rows, cols, left=1, top=1, width=8, height=4)`: Add a table to a slide
 - `get_table_content(slide_index, shape_index)`: Retrieve the content of a table in a slide
-- `add_chart(slide_index, chart_type, categories, series_names, series_values, left=1, top=1, width=8, height=4, has_legend=True)`: Add a chart to a slide
+- `add_chart(slide_index, chart_type, categories, series_names, series_values, left=1, top=1, width=8, height=4, has_legend=True)`: Add a chart to a slide with multiple data series
   - Chart types: 'COLUMN', 'LINE', 'PIE', 'BAR'
+  - `categories`: List of category names (x-axis labels)
+  - `series_names`: List of series names for the legend
+  - `series_values`: List of lists containing values for each series
 
 ## Error Handling
 

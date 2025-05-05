@@ -394,15 +394,16 @@ def close_presentation() -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 @mcp.tool()
-def create_presentation() -> Dict[str, Any]:
+def create_presentation(template: str = None) -> Dict[str, Any]:
     """
     Create a new PowerPoint presentation.
-    
+    Args:
+        template: Optional path to a template file (.pptx)
     Returns:
         Dictionary containing new presentation metadata
     """
     try:
-        ppt_automation.active_presentation = Presentation()
+        ppt_automation.active_presentation = Presentation(pptx=template) if template else Presentation()
         ppt_automation.presentation_path = ""
         
         return {
@@ -420,11 +421,7 @@ def add_slide(layout_index: int = 1) -> Dict[str, Any]:
     
     Args:
         layout_index: Slide layout index (default is 1)
-            0: Title slide
-            1: Title and content
-            2: Section header
-            3: Two content
-            etc...
+        get_slide_layouts() to see available layouts.
             
     Returns:
         Information about the new slide
@@ -777,6 +774,88 @@ def get_table_content(slide_index: int, shape_index: int) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"error": f"Error retrieving table content: {str(e)}"}
+
+@mcp.tool()
+def get_slide_layouts() -> Dict[str, Any]:
+    """
+    Get all available slide layouts in the active presentation.
+    
+    Returns:
+        Dictionary containing all slide layouts with their properties
+    """
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
+    
+    pres = ppt_automation.active_presentation
+    
+    try:
+        layouts = []
+        for i, layout in enumerate(pres.slide_layouts):
+            # Try to get layout name
+            layout_name = layout.name if hasattr(layout, "name") else f"Layout {i}"
+            
+            # Count placeholders
+            placeholder_count = 0
+            placeholder_types = []
+            for shape in layout.placeholders:
+                placeholder_count += 1
+                ph_type = shape.placeholder_format.type
+                placeholder_types.append(ph_type)
+            
+            layouts.append({
+                "index": i,
+                "name": layout_name,
+                "placeholder_count": placeholder_count,
+                "placeholder_types": placeholder_types
+            })
+        
+        return {
+            "success": True,
+            "layout_count": len(pres.slide_layouts),
+            "layouts": layouts
+        }
+    except Exception as e:
+        return {"error": f"Error getting slide layouts: {str(e)}"}
+
+@mcp.tool()
+def delete_slide(slide_index: int) -> Dict[str, Any]:
+    """
+    Delete a slide from the presentation.
+    
+    Args:
+        slide_index: Index of the slide to delete (0-based)
+        
+    Returns:
+        Status of the operation
+    """
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
+    
+    pres = ppt_automation.active_presentation
+    
+    try:
+        if slide_index < 0 or slide_index >= len(pres.slides):
+            return {"error": f"Invalid slide index: {slide_index}. Valid range is 0-{len(pres.slides)-1}"}
+        
+        # Get the XML slides list
+        slides = pres.slides._sldIdLst
+        
+        # Get the slide ID to remove
+        slide_id = slides[slide_index].rId
+        
+        # Remove the slide from the list
+        slides.remove(slides[slide_index])
+        
+        # Remove the relationship
+        pres.part.rels.remove(slide_id)
+        
+        return {
+            "success": True,
+            "message": f"Slide at index {slide_index} has been deleted",
+            "remaining_slides": len(pres.slides)
+        }
+    except Exception as e:
+        return {"error": f"Error deleting slide: {str(e)}"}
 
 @mcp.tool()
 def add_chart(slide_index: int, chart_type: str,
