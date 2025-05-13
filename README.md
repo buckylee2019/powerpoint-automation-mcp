@@ -39,6 +39,8 @@ The server exposes various tools for PowerPoint automation that can be called vi
 - `add_slide(layout_index=1)`: Add a new slide with specified layout (default is Title and Content)
   - Layout options: 0=Title slide, 1=Title and content, 2=Section header, 3=Two content, etc.
 - `set_slide_title(slide_index, title)`: Set the title text of a slide
+- `get_slide_layouts()`: Get all available slide layouts in the active presentation
+- `delete_slide(slide_index)`: Delete a slide from the presentation
 
 ### Content Management
 - `get_slide_text(slide_index)`: Get all text content in a slide
