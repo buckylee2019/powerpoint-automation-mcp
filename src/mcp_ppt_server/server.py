@@ -230,14 +230,22 @@ def get_slide_shapes(slide_index: int) -> Dict[str, Any]:
         }
 
 @mcp.tool()
-def update_text(slide_index: int, shape_index: int, text: str) -> Dict[str, Any]:
+def update_text(slide_index: int, shape_index: int, text: str,
+                font_name: str = None, font_size: int = None,
+                bold: bool = None, italic: bool = None,
+                preserve_existing: bool = True) -> Dict[str, Any]:
     """
-    Update the text content of a shape.
+    Update the text content of a shape with optional formatting control.
     
     Args:
         slide_index: Index of the slide (0-based)
         shape_index: Index of the shape (0-based)
         text: New text content
+        font_name: Font name (e.g., 'Arial', 'Calibri') - optional
+        font_size: Font size in points - optional
+        bold: Whether text should be bold - optional
+        italic: Whether text should be italic - optional
+        preserve_existing: Whether to preserve existing formatting when new formatting is not specified (default: True)
         
     Returns:
         Status of the operation
@@ -259,8 +267,85 @@ def update_text(slide_index: int, shape_index: int, text: str) -> Dict[str, Any]
         shape = slide.shapes[shape_index]
         
         if shape.has_text_frame:
-            shape.text_frame.text = text
-            return {"success": True, "message": "Text updated successfully"}
+            text_frame = shape.text_frame
+            
+            # Store original formatting if preserving existing
+            original_font = None
+            if preserve_existing and text_frame.paragraphs and text_frame.paragraphs[0].runs:
+                first_run = text_frame.paragraphs[0].runs[0]
+                
+                # Safely handle color property
+                color_rgb = None
+                try:
+                    if hasattr(first_run.font.color, 'rgb') and first_run.font.color.rgb is not None:
+                        color_rgb = first_run.font.color.rgb
+                except (AttributeError, TypeError):
+                    # Color might be theme-based or None, skip it
+                    pass
+                
+                original_font = {
+                    'name': first_run.font.name,
+                    'size': first_run.font.size,
+                    'bold': first_run.font.bold,
+                    'italic': first_run.font.italic,
+                    'color': color_rgb
+                }
+            
+            # Clear existing content
+            text_frame.clear()
+            
+            # Add new paragraph with the text
+            paragraph = text_frame.paragraphs[0]
+            run = paragraph.add_run()
+            run.text = text
+            
+            # Apply formatting - new parameters take precedence over preserved formatting
+            if font_name:
+                run.font.name = font_name
+            elif preserve_existing and original_font and original_font['name']:
+                run.font.name = original_font['name']
+            
+            if font_size:
+                run.font.size = Pt(font_size)
+            elif preserve_existing and original_font and original_font['size']:
+                run.font.size = original_font['size']
+            
+            if bold is not None:
+                run.font.bold = bold
+            elif preserve_existing and original_font and original_font['bold'] is not None:
+                run.font.bold = original_font['bold']
+            
+            if italic is not None:
+                run.font.italic = italic
+            elif preserve_existing and original_font and original_font['italic'] is not None:
+                run.font.italic = original_font['italic']
+            
+            # Preserve color if it existed
+            if preserve_existing and original_font and original_font['color']:
+                try:
+                    run.font.color.rgb = original_font['color']
+                except (AttributeError, TypeError):
+                    # Skip color if it can't be applied
+                    pass
+            
+            # Build success message
+            formatting_applied = []
+            if font_name:
+                formatting_applied.append(f"font: {font_name}")
+            if font_size:
+                formatting_applied.append(f"size: {font_size}pt")
+            if bold is not None:
+                formatting_applied.append(f"bold: {bold}")
+            if italic is not None:
+                formatting_applied.append(f"italic: {italic}")
+            
+            message = "Text updated successfully"
+            if formatting_applied:
+                message += f" with formatting: {', '.join(formatting_applied)}"
+            elif preserve_existing:
+                message += " with preserved formatting"
+            
+            return {"success": True, "message": message}
         else:
             return {"success": False, "message": "Shape does not contain editable text"}
     except Exception as e:
@@ -268,8 +353,8 @@ def update_text(slide_index: int, shape_index: int, text: str) -> Dict[str, Any]
 
 @mcp.tool()
 def update_shape_by_id(slide_index: int, shape_id: str, 
-                       text: str = None, left: float = None, top: float = None, 
-                       width: float = None, height: float = None) -> Dict[str, Any]:
+                      text: str = None, left: float = None, top: float = None, 
+                      width: float = None, height: float = None) -> Dict[str, Any]:
     """
     Update a shape by its ID with new properties.
     
@@ -911,18 +996,6 @@ def add_chart(slide_index: int, chart_type: str,
         from pptx.chart.data import CategoryChartData
         chart_data = CategoryChartData()
         
-        # Add categories
-        chart_data.categories = categories
-        
-        # Add series
-        for i, (name, values) in enumerate(zip(series_names, series_values)):
-            chart_data.add_series(name, values)
-            
-        # Add chart to slide
-        chart = slide.shapes.add_chart(
-            chart_type_enum, left_inches, top_inches, width_inches, height_inches, chart_data
-        )
-
         # Add categories
         chart_data.categories = categories
         
