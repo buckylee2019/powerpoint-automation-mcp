@@ -51,7 +51,7 @@ def get_presentation() -> Dict[str, Any]:
 @mcp.tool()
 def open_presentation(file_path: str) -> Dict[str, Any]:
     """
-    Open a PowerPoint presentation from the specified path.
+    Open a PowerPoint presentation from the specified path. 
     
     Args:
         file_path: Full path to the PowerPoint file (.pptx)
@@ -114,7 +114,7 @@ def get_slides() -> List[Dict[str, Any]]:
 @mcp.tool()
 def get_slide_text(slide_index: int) -> Dict[str, Any]:
     """
-    Get all text content in a slide.
+    Get all text content in a slide. ALWAYS check if there are groupped shapes first.
     
     Args:
         slide_index: Index of the slide (integer, 0-based)
@@ -133,9 +133,14 @@ def get_slide_text(slide_index: int) -> Dict[str, Any]:
         
         slide = pres.slides[slide_index]
         text_content = {}
+        has_grouped_shapes = False
         
         for shape_idx, shape in enumerate(slide.shapes):
             shape_id = str(shape_idx)
+            
+            # Check if this is a grouped shape
+            if hasattr(shape, 'shape_type') and shape.shape_type == 6:  # MSO_SHAPE_TYPE.GROUP
+                has_grouped_shapes = True
             
             if shape.has_text_frame:
                 text = shape.text
@@ -150,6 +155,7 @@ def get_slide_text(slide_index: int) -> Dict[str, Any]:
             "slide_index": slide_index,
             "slide_count": len(pres.slides),
             "shape_count": len(slide.shapes),
+            "has_grouped_shapes": has_grouped_shapes,
             "content": text_content
         }
     except Exception as e:
@@ -161,7 +167,7 @@ def get_slide_text(slide_index: int) -> Dict[str, Any]:
 @mcp.tool()
 def get_slide_shapes(slide_index: int) -> Dict[str, Any]:
     """
-    Get all shapes in a slide with their IDs and properties.
+    ALWAYS RUN IT FIRST!! Get all shapes in a slide with their IDs and properties. If shapes are groupped, remember to ungroup them.
     
     Args:
         slide_index: Index of the slide (integer, 0-based)
@@ -271,14 +277,22 @@ def update_text(slide_index: int, shape_index: int, text: str,
             
             # Store original formatting if preserving existing
             original_font = None
+            original_alignment = None
             if preserve_existing and text_frame.paragraphs and text_frame.paragraphs[0].runs:
                 first_run = text_frame.paragraphs[0].runs[0]
+                original_alignment = text_frame.paragraphs[0].alignment
                 
-                # Safely handle color property
+                # Safely handle color property including theme colors
                 color_rgb = None
+                theme_color = None
                 try:
-                    if hasattr(first_run.font.color, 'rgb') and first_run.font.color.rgb is not None:
-                        color_rgb = first_run.font.color.rgb
+                    color_obj = first_run.font.color
+                    if hasattr(color_obj, 'theme_color') and color_obj.theme_color is not None:
+                        # Only save valid theme colors (not NOT_THEME_COLOR)
+                        if color_obj.theme_color != 0:  # 0 = NOT_THEME_COLOR
+                            theme_color = color_obj.theme_color
+                    elif hasattr(color_obj, 'rgb') and color_obj.rgb is not None:
+                        color_rgb = color_obj.rgb
                 except (AttributeError, TypeError):
                     # Color might be theme-based or None, skip it
                     pass
@@ -288,7 +302,8 @@ def update_text(slide_index: int, shape_index: int, text: str,
                     'size': first_run.font.size,
                     'bold': first_run.font.bold,
                     'italic': first_run.font.italic,
-                    'color': color_rgb
+                    'color': color_rgb,
+                    'theme_color': theme_color
                 }
             
             # Clear existing content
@@ -296,6 +311,10 @@ def update_text(slide_index: int, shape_index: int, text: str,
             
             # Add new paragraph with the text
             paragraph = text_frame.paragraphs[0]
+            
+            # Restore alignment if preserved
+            if preserve_existing and original_alignment is not None:
+                paragraph.alignment = original_alignment
             run = paragraph.add_run()
             run.text = text
             
@@ -320,10 +339,14 @@ def update_text(slide_index: int, shape_index: int, text: str,
             elif preserve_existing and original_font and original_font['italic'] is not None:
                 run.font.italic = original_font['italic']
             
-            # Preserve color if it existed
-            if preserve_existing and original_font and original_font['color']:
+            # Preserve color if it existed (theme color takes priority)
+            if preserve_existing and original_font:
                 try:
-                    run.font.color.rgb = original_font['color']
+                    if original_font['theme_color'] is not None and original_font['theme_color'] != 0:
+                        # Only restore valid theme colors (not NOT_THEME_COLOR)
+                        run.font.color.theme_color = original_font['theme_color']
+                    elif original_font['color']:
+                        run.font.color.rgb = original_font['color']
                 except (AttributeError, TypeError):
                     # Skip color if it can't be applied
                     pass
@@ -1019,6 +1042,141 @@ def add_chart(slide_index: int, chart_type: str,
         }
     except Exception as e:
         return {"error": f"Error adding chart: {str(e)}"}
+
+@mcp.tool()
+def ungroup_shapes(slide_index: int) -> Dict[str, Any]:
+    """
+    Ungroup all groups in a slide (only if all groups are simple without nested grpSp elements).
+    
+    Args:
+        slide_index: Index of the slide (0-based)
+        
+    Returns:
+        Status of the operation
+    """
+    if ppt_automation.active_presentation is None:
+        return {"error": "No active presentation. Please open or create a presentation first."}
+    
+    pres = ppt_automation.active_presentation
+    
+    try:
+        if slide_index < 0 or slide_index >= len(pres.slides):
+            return {"error": f"Invalid slide index: {slide_index}"}
+        
+        slide = pres.slides[slide_index]
+        
+        # 檢查所有群組是否都是簡單群組，並標記包含文字的群組
+        text_groups = []
+        for shape in slide.shapes:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                group_elem = shape._element
+                children = list(group_elem)
+                
+                has_grpSp = any(child.tag.endswith('}grpSp') for child in children)
+                if has_grpSp:
+                    return {"error": "Slide contains complex nested groups (grpSp). Entire slide skipped."}
+                
+                # 檢查群組是否包含文字
+                has_text = False
+                try:
+                    for child_shape in shape.shapes:
+                        if hasattr(child_shape, 'has_text_frame') and child_shape.has_text_frame:
+                            if child_shape.text.strip():
+                                has_text = True
+                                break
+                except:
+                    pass
+                
+                if has_text:
+                    text_groups.append(shape)
+        
+        if not text_groups:
+            return {"success": True, "message": "No text-containing groups found in slide"}
+        
+        # 反覆處理直到沒有包含文字的群組
+        total_groups = 0
+        total_shapes = 0
+        
+        while True:
+            has_text_group = False
+            shapes_to_process = list(slide.shapes)
+            
+            for shape in shapes_to_process:
+                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                    # 檢查這個群組是否包含文字
+                    has_text = False
+                    try:
+                        for child_shape in shape.shapes:
+                            if hasattr(child_shape, 'has_text_frame') and child_shape.has_text_frame:
+                                if child_shape.text.strip():
+                                    has_text = True
+                                    break
+                    except:
+                        pass
+                    
+                    if not has_text:
+                        continue  # 跳過不包含文字的群組
+                    
+                    has_text_group = True
+                    total_groups += 1
+                    
+                    spTree = slide._element.spTree
+                    group_elem = shape._element
+                    
+                    # 獲取群組的位置和變換資訊
+                    grpSpPr = group_elem.find('.//{http://schemas.openxmlformats.org/presentationml/2006/main}grpSpPr')
+                    
+                    if grpSpPr is not None:
+                        xfrm = grpSpPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}xfrm')
+                        chOff = grpSpPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}chOff')
+                        
+                        group_x = int(xfrm.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}off').get('x', 0))
+                        group_y = int(xfrm.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}off').get('y', 0))
+                        
+                        child_off_x = int(chOff.get('x', 0)) if chOff is not None else 0
+                        child_off_y = int(chOff.get('y', 0)) if chOff is not None else 0
+                    else:
+                        group_x = group_y = child_off_x = child_off_y = 0
+                    
+                    # 處理子元素
+                    children = list(group_elem)
+                    for child in children:
+                        if not child.tag.endswith('}sp'):
+                            continue
+                            
+                        spPr = child.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}xfrm')
+                        
+                        if spPr is not None:
+                            off = spPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}off')
+                            
+                            if off is not None:
+                                child_x = int(off.get('x', 0))
+                                child_y = int(off.get('y', 0))
+                                
+                                new_x = group_x + (child_x - child_off_x)
+                                new_y = group_y + (child_y - child_off_y)
+                                
+                                off.set('x', str(new_x))
+                                off.set('y', str(new_y))
+                        
+                        spTree.append(child)
+                        total_shapes += 1
+                    
+                    spTree.remove(group_elem)
+                    break
+            
+            if not has_text_group:
+                break
+        
+        if total_groups == 0:
+            return {"success": True, "message": "No text-containing groups found in slide"}
+        
+        return {
+            "success": True,
+            "message": f"Ungrouped {total_groups} text-containing groups, extracted {total_shapes} shapes"
+        }
+    except Exception as e:
+        return {"error": f"Error ungrouping shapes: {str(e)}"}
 
 def main():
     mcp.run(transport="stdio")
