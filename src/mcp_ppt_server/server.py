@@ -948,14 +948,15 @@ def delete_slide(slide_index: int) -> Dict[str, Any]:
         # Get the XML slides list
         slides = pres.slides._sldIdLst
         
-        # Get the slide ID to remove
-        slide_id = slides[slide_index].rId
+        # Get the slide element to remove
+        slide_element = slides[slide_index]
+        slide_id = slide_element.rId
         
-        # Remove the slide from the list
-        slides.remove(slides[slide_index])
+        # Remove the slide from the XML list
+        slides.remove(slide_element)
         
-        # Remove the relationship
-        pres.part.rels.remove(slide_id)
+        # Remove the relationship using del
+        del pres.part.rels[slide_id]
         
         return {
             "success": True,

@@ -19,7 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+test/
 # Virtual Environment
 .venv/
 venv/
@@ -36,3 +36,6 @@ ENV/
 
 # macOS
 .DS_Store
+.env
+uv.lock
+.python-version
