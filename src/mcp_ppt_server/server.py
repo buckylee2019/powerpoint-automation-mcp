@@ -291,7 +291,9 @@ def update_text(slide_index: int, shape_index: int, text: str,
                         # Only save valid theme colors (not NOT_THEME_COLOR)
                         if color_obj.theme_color != 0:  # 0 = NOT_THEME_COLOR
                             theme_color = color_obj.theme_color
-                    elif hasattr(color_obj, 'rgb') and color_obj.rgb is not None:
+                    
+                    # Always check for RGB color if no valid theme color
+                    if theme_color is None and hasattr(color_obj, 'rgb') and color_obj.rgb is not None:
                         color_rgb = color_obj.rgb
                 except (AttributeError, TypeError):
                     # Color might be theme-based or None, skip it
