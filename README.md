@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/3daf3bef-4d75-4639-a891-0e64b80b4807
 For translating presentations, process in batches to avoid context overflow and ensure data safety:
 
 ```
-Translate this presentation [absolution path of ppt], processing 10 slides at a time and saving after each batch of 10 slides.
+Translate this presentation [absolute path of ppt], processing 10 slides at a time and saving after each batch of 10 slides.
 ```
 
 This approach:
