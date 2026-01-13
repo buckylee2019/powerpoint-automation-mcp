@@ -18,6 +18,22 @@ https://github.com/user-attachments/assets/3daf3bef-4d75-4639-a891-0e64b80b4807
 - **Group Management**: Ungroup shapes for easier manipulation
 - **Layout Support**: Work with different slide layouts and placeholders
 
+
+## Recommended Prompts
+
+### Translation Scenario
+For translating presentations, process in batches to avoid context overflow and ensure data safety:
+
+```
+Translate this presentation [absolution path of ppt], processing 10 slides at a time and saving after each batch of 10 slides.
+```
+
+This approach:
+- Prevents token limit issues on large presentations
+- Saves progress incrementally to avoid data loss
+- Allows for review between batches
+
+
 ## Installation
 
 ```bash
