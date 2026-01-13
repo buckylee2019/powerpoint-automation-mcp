@@ -1068,8 +1068,8 @@ def ungroup_shapes(slide_index: int) -> Dict[str, Any]:
         
         slide = pres.slides[slide_index]
         
-        # 檢查所有群組是否都是簡單群組，並標記包含文字的群組
-        text_groups = []
+        # 收集群組資訊
+        group_info = []
         for shape in slide.shapes:
             if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
                 group_elem = shape._element
@@ -1077,9 +1077,8 @@ def ungroup_shapes(slide_index: int) -> Dict[str, Any]:
                 
                 has_grpSp = any(child.tag.endswith('}grpSp') for child in children)
                 if has_grpSp:
-                    return {"error": "Slide contains complex nested groups (grpSp). Entire slide skipped."}
+                    return {"error": "Slide contains complex nested groups. Skipped."}
                 
-                # 檢查群組是否包含文字
                 has_text = False
                 try:
                     for child_shape in shape.shapes:
@@ -1091,95 +1090,95 @@ def ungroup_shapes(slide_index: int) -> Dict[str, Any]:
                     pass
                 
                 if has_text:
-                    text_groups.append(shape)
+                    # 獲取群組 ID
+                    nvGrpSpPr = group_elem.find('.//{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr')
+                    group_id = nvGrpSpPr.get('id') if nvGrpSpPr is not None else None
+                    group_info.append({
+                        'shape': shape,
+                        'group_id': group_id
+                    })
         
-        if not text_groups:
-            return {"success": True, "message": "No text-containing groups found in slide"}
+        if not group_info:
+            return {"success": True, "message": "No text-containing groups found"}
         
-        # 反覆處理直到沒有包含文字的群組
+        import copy
+        
         total_groups = 0
         total_shapes = 0
+        spTree = slide._element.spTree
+        id_mapping = {}  # 舊群組ID -> 新形狀ID列表
         
-        while True:
-            has_text_group = False
-            shapes_to_process = list(slide.shapes)
+        for info in group_info:
+            shape = info['shape']
+            group_elem = shape._element
+            old_group_id = info['group_id']
+            new_shape_ids = []
             
-            for shape in shapes_to_process:
-                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                    # 檢查這個群組是否包含文字
-                    has_text = False
-                    try:
-                        for child_shape in shape.shapes:
-                            if hasattr(child_shape, 'has_text_frame') and child_shape.has_text_frame:
-                                if child_shape.text.strip():
-                                    has_text = True
-                                    break
-                    except:
-                        pass
-                    
-                    if not has_text:
-                        continue  # 跳過不包含文字的群組
-                    
-                    has_text_group = True
-                    total_groups += 1
-                    
-                    spTree = slide._element.spTree
-                    group_elem = shape._element
-                    
-                    # 獲取群組的位置和變換資訊
-                    grpSpPr = group_elem.find('.//{http://schemas.openxmlformats.org/presentationml/2006/main}grpSpPr')
-                    
-                    if grpSpPr is not None:
-                        xfrm = grpSpPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}xfrm')
-                        chOff = grpSpPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}chOff')
-                        
-                        group_x = int(xfrm.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}off').get('x', 0))
-                        group_y = int(xfrm.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}off').get('y', 0))
-                        
-                        child_off_x = int(chOff.get('x', 0)) if chOff is not None else 0
-                        child_off_y = int(chOff.get('y', 0)) if chOff is not None else 0
-                    else:
-                        group_x = group_y = child_off_x = child_off_y = 0
-                    
-                    # 處理子元素
-                    children = list(group_elem)
-                    for child in children:
-                        if not child.tag.endswith('}sp'):
-                            continue
-                            
-                        spPr = child.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}xfrm')
-                        
-                        if spPr is not None:
-                            off = spPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}off')
-                            
-                            if off is not None:
-                                child_x = int(off.get('x', 0))
-                                child_y = int(off.get('y', 0))
-                                
-                                new_x = group_x + (child_x - child_off_x)
-                                new_y = group_y + (child_y - child_off_y)
-                                
-                                off.set('x', str(new_x))
-                                off.set('y', str(new_y))
-                        
-                        spTree.append(child)
-                        total_shapes += 1
-                    
-                    spTree.remove(group_elem)
-                    break
+            # 獲取群組變換資訊
+            grpSpPr = group_elem.find('.//{http://schemas.openxmlformats.org/presentationml/2006/main}grpSpPr')
+            group_x = group_y = child_off_x = child_off_y = 0
             
-            if not has_text_group:
-                break
+            if grpSpPr is not None:
+                xfrm = grpSpPr.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}xfrm')
+                if xfrm is not None:
+                    off = xfrm.find('{http://schemas.openxmlformats.org/drawingml/2006/main}off')
+                    chOff = xfrm.find('{http://schemas.openxmlformats.org/drawingml/2006/main}chOff')
+                    if off is not None:
+                        group_x = int(off.get('x', 0))
+                        group_y = int(off.get('y', 0))
+                    if chOff is not None:
+                        child_off_x = int(chOff.get('x', 0))
+                        child_off_y = int(chOff.get('y', 0))
+            
+            # 處理子元素
+            children = list(group_elem)
+            for child in children:
+                if not (child.tag.endswith('}sp') or child.tag.endswith('}pic')):
+                    continue
+                
+                new_child = copy.deepcopy(child)
+                
+                # 獲取新形狀的 ID
+                cNvPr = new_child.find('.//{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr')
+                if cNvPr is not None:
+                    new_shape_ids.append(cNvPr.get('id'))
+                
+                # 更新位置
+                spPr = new_child.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}xfrm')
+                if spPr is not None:
+                    off = spPr.find('{http://schemas.openxmlformats.org/drawingml/2006/main}off')
+                    if off is not None:
+                        child_x = int(off.get('x', 0))
+                        child_y = int(off.get('y', 0))
+                        off.set('x', str(group_x + child_x - child_off_x))
+                        off.set('y', str(group_y + child_y - child_off_y))
+                
+                spTree.append(new_child)
+                total_shapes += 1
+            
+            if old_group_id and new_shape_ids:
+                id_mapping[old_group_id] = new_shape_ids
+            
+            spTree.remove(group_elem)
+            total_groups += 1
         
-        if total_groups == 0:
-            return {"success": True, "message": "No text-containing groups found in slide"}
+        # 更新動畫引用
+        timing = slide._element.find('.//{http://schemas.openxmlformats.org/presentationml/2006/main}timing')
+        if timing is not None:
+            # 找到所有 spTgt 元素並更新引用
+            for spTgt in timing.findall('.//{http://schemas.openxmlformats.org/presentationml/2006/main}spTgt'):
+                old_spid = spTgt.get('spid')
+                if old_spid in id_mapping and id_mapping[old_spid]:
+                    # 將動畫指向第一個子形狀
+                    spTgt.set('spid', id_mapping[old_spid][0])
         
         return {
             "success": True,
-            "message": f"Ungrouped {total_groups} text-containing groups, extracted {total_shapes} shapes"
+            "message": f"Ungrouped {total_groups} groups, extracted {total_shapes} shapes"
         }
     except Exception as e:
-        return {"error": f"Error ungrouping shapes: {str(e)}"}
+        import traceback
+        return {"error": f"Error ungrouping: {str(e)}\n{traceback.format_exc()}"}
 
 def main():
     mcp.run(transport="stdio")
